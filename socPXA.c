@@ -460,7 +460,7 @@ void socRun(struct SoC* soc)
 	uint_fast8_t i;
 	uint64_t paceBaseUs = socPrvHostUs(), paceCycles = 0;
 	int64_t rtcCountdown = SOC_CYCLES_PER_SECOND;
-	bool coreStopped = false;
+	bool coreStopped = false, rtcAlarmWasRaised = false;
 	
 	while (1) {	
 		
@@ -571,12 +571,19 @@ void socRun(struct SoC* soc)
 		}
 		
 		if (pxaPwrClkIsSleeping(soc->pwrClk)) {
-			if (socIcIsRaised(soc->ic, PXA_I_RTC_ALM))
+			bool rtcAlarm = socIcIsRaised(soc->ic, PXA_I_RTC_ALM);
+			
+			if (rtcAlarm && !rtcAlarmWasRaised)		//a new alarm event wakes; one left pending from before sleep does not
 				pxaPwrClkRtcAlarm(soc->pwrClk);
+			rtcAlarmWasRaised = rtcAlarm;
 		}
-		else if (!pxaPwrClkIsIdle(soc->pwrClk) || socIcAnyUnmaskedPending(soc->ic)) {
-			pxaPwrClkEndIdle(soc->pwrClk);
-			cpuCycle(soc->cpu);
+		else {
+			rtcAlarmWasRaised = socIcIsRaised(soc->ic, PXA_I_RTC_ALM);
+			
+			if (!pxaPwrClkIsIdle(soc->pwrClk) || socIcAnyUnmaskedPending(soc->ic)) {
+				pxaPwrClkEndIdle(soc->pwrClk);
+				cpuCycle(soc->cpu);
+			}
 		}
 		coreStopped = pxaPwrClkIsSleeping(soc->pwrClk) || (pxaPwrClkIsIdle(soc->pwrClk) && !socIcAnyUnmaskedPending(soc->ic));
 	}
