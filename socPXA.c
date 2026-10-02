@@ -267,6 +267,7 @@ struct SoC* socInit(void **romPieces, const uint32_t *romPieceSizes, uint32_t ro
 	soc->pwrClk = pxaPwrClkInit(soc->cpu, soc->mem, socRev == 2);
 	if (!soc->pwrClk)
 		ERR("Cannot init PXA's PWRCLKMGR");
+	socGpioSetEdgeNotif(soc->gpio, pxaPwrClkGpioEdge, soc->pwrClk);	//sleep wakeups
 	
 	if (socRev == 2) {
 		soc->pwrI2c = socI2cInit(soc->mem, soc->ic, soc->dma, PXA_PWR_I2C_BASE, PXA_I_PWR_I2C);
@@ -525,7 +526,8 @@ void socRun(struct SoC* soc)
 			}
 		}
 		
-		cpuCycle(soc->cpu);
+		if (!pxaPwrClkIsSleeping(soc->pwrClk))
+			cpuCycle(soc->cpu);
 	}
 }
 
