@@ -20,12 +20,13 @@ struct PxaPwrClk {
 	uint32_t PMCR, PSSR, PSPR, PWER, PRER, PFER, PEDR, PCFR, PGSR[4], RCSR, PMFW;
 	//power mgr 270 only
 	uint32_t PSTR, PVCR, PUCR, PKWR, PKSR, PCMD[32];
-	bool turbo, isPXA270, sleeping;
+	bool turbo, isPXA270, sleeping, idle;
 };
 
 static void pxaPwrClkPrvWake(struct PxaPwrClk *pc)
 {
 	pc->sleeping = false;
+	pc->idle = false;
 	pc->RCSR |= 4;			//SMR: sleep mode reset
 	pc->PSSR |= 0x31;		//SSS (software sleep), PH (peripheral hold), RDH (read disable hold)
 	cpuReset(pc->cpu, 0);
@@ -34,6 +35,24 @@ static void pxaPwrClkPrvWake(struct PxaPwrClk *pc)
 bool pxaPwrClkIsSleeping(struct PxaPwrClk *pc)
 {
 	return pc->sleeping;
+}
+
+bool pxaPwrClkIsIdle(struct PxaPwrClk *pc)
+{
+	return pc->idle;
+}
+
+void pxaPwrClkEndIdle(struct PxaPwrClk *pc)
+{
+	pc->idle = false;
+}
+
+void pxaPwrClkRtcAlarm(struct PxaPwrClk *pc)
+{
+	if (pc->sleeping && (pc->PWER & 0x80000000UL)) {
+		fprintf(stderr, "RESUMING (wakeup from RTC alarm)\n");
+		pxaPwrClkPrvWake(pc);
+	}
 }
 
 void pxaPwrClkGpioEdge(void *userData, uint32_t gpioNum, bool rising)
@@ -100,7 +119,7 @@ static bool pxaPwrClkPrvCoproc14regXferFunc(struct ArmCpu *cpu, void* userData, 
 					val = 0;
 				else if (val == 1 && op2 == 0) {
 					
-					//idle
+					pc->idle = true;		//idle: the core stops until an interrupt unmasked in ICMR is pending
 				}
 				else if (val == 3 && op2 == 0 && !pc->isPXA270) {
 					
